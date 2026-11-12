@@ -38,6 +38,5 @@ class ServiceRequest:
     authentication: Optional[ServiceAuthenticationRequest]
     discovery: Optional[ServiceDiscoveryRequest]
     status: str
-    active_revision_id: str
     created_at: Optional[str]
     updated_at: Optional[str]

@@ -3,8 +3,17 @@ import logging
 from fastapi import APIRouter, status, Request
 
 from mcp_gateway.domain.external.model import HealthResponse, ServiceRequest, ServiceResponse
+from mcp_gateway.domain.model.discovery import (
+    Discovery,
+    DiscoveryCapabilities,
+    DiscoveryListChangedCapability,
+    DiscoveryResourcesCapability,
+    DiscoveryResponse,
+    DiscoveryServerInfo,
+)
 
 from mcp_gateway.domain.usecase.health import HealthUseCase
+from mcp_gateway.domain.usecase.discovery import DiscoveryServicesUseCase
 from mcp_gateway.domain.usecase.register import RegisteredServicesUseCase
 
 from mcp_gateway.domain.external.error_response import AppError
@@ -21,6 +30,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     tags=["Health"],
 )
+
+def _to_discovery_response(service, tools, resources, prompts, resource_templates) -> Discovery:
+    discovered_at = service.updated_at or service.created_at or ""
+    content_hash = getattr(service, "content_hash", "") or ""
+    version = getattr(service, "active_revision_id", "") or "unknown"
+
+    return Discovery(
+        serverId=service.server_id,
+        protocolVersion="2025-06-18",
+        serverInfo=DiscoveryServerInfo(
+            name=service.name,
+            version=version,
+        ),
+        capabilities=DiscoveryCapabilities(
+            tools=DiscoveryListChangedCapability(listChanged=True),
+            prompts=DiscoveryListChangedCapability(listChanged=True),
+            resources=DiscoveryResourcesCapability(
+                listChanged=True,
+                subscribe=True,
+            ),
+        ),
+        tools=tools,
+        prompts=prompts,
+        resources=resources,
+        resourceTemplates=resource_templates,
+        discoveredAt=discovered_at,
+        contentHash=content_hash,
+    )
 
 #----------------------------------------------
 # Registered health endpoint for the gateway
@@ -42,7 +79,7 @@ def get_health() -> HealthResponse:
 #----------------------------------------------
 # Registered services endpoint for the gateway
 @router.post(
-    "/v1/services",
+    "/v1/service",
     response_model=ServiceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Post registered services",
@@ -53,7 +90,7 @@ async def get_registered_services(payload: ServiceRequest, request: Request) -> 
         try:
             repo = request.app.state.container.mcp_server_repository
             use_case = RegisteredServicesUseCase(repo)
-            
+
             result = await use_case.add_registered_service(payload)
             message = f"Service {result.name} added successfully"
 
@@ -72,22 +109,76 @@ async def get_registered_services(payload: ServiceRequest, request: Request) -> 
 #----------------------------------------------
 # Get registered services endpoint for the gateway
 @router.get(
-    "/v1/services",
+    "/v1/service/{server_id}",
     response_model=ServiceResponse,
     status_code=status.HTTP_200_OK,
-    summary="Get registered services",
+    summary="Get registered service by server id",
 )
-async def get_registered_service(payload: ServiceRequest, request: Request) -> ServiceResponse:
-    logger.info("Executing get_registered_service endpoint : payload=%s", payload)
+async def get_registered_service(server_id: str, request: Request) -> ServiceResponse:
+    logger.info("Executing get_registered_service endpoint : server_id=%s", server_id)
     with tracer.start_as_current_span("router.get_registered_service") as span:
         try:
             repo = request.app.state.container.mcp_server_repository
             use_case = RegisteredServicesUseCase(repo)
-            
-            result = await use_case.get_registered_service(payload)
+
+            result = await use_case.get_registered_service(server_id)
+            if result is None:
+                raise AppError(
+                    message=f"Service {server_id} not found",
+                    error="NOT_FOUND",
+                    status_code=404,
+                )
             message = f"Service {result.name} retrieved successfully"
 
             return ServiceResponse(message=message, service=result)
+        except AppError:
+            raise
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+
+            logger.error(f"Error retrieving registered service: {e}")
+            raise AppError(
+                message=f"Error retrieving registered service: {e}",
+                error="ERROR",
+                status_code=500,
+            ) from e
+
+#----------------------------------------------
+# Discovery
+@router.get(
+    "/v1/discovery/{server_id}",
+    response_model=DiscoveryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get discovery information for service by server id",
+)
+async def get_discovery_info(server_id: str, request: Request) -> DiscoveryResponse:
+    logger.info("Executing get_discovery_info endpoint : server_id=%s", server_id)
+    with tracer.start_as_current_span("router.get_discovery_info") as span:
+        try:
+            repo = request.app.state.container.mcp_server_repository
+            use_case = DiscoveryServicesUseCase(repo)
+
+            result = await use_case.get_discovery_service(server_id)
+            if result is None:
+                raise AppError(
+                    message=f"Service {server_id} not found",
+                    error="NOT_FOUND",
+                    status_code=404,
+                )
+            service = result["service"]
+            tools = result["tools"]
+            resources = result["resources"]
+            prompts = result["prompts"]
+            resource_templates = result["resource_templates"]
+            message = f"Service {service.name} discovery retrieved successfully"
+
+            return DiscoveryResponse(
+                message=message,
+                discovery=_to_discovery_response(service, tools, resources, prompts, resource_templates),
+            )
+        except AppError:
+            raise
         except Exception as e:
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR, str(e)))

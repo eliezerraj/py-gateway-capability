@@ -15,7 +15,6 @@ Inventory MCP Sever Example:
 ```json
 {
   "serverId": "inventory-prod",
-  "revisionId": "rev-03112026",
   "protocolVersion": "negotiated-version",
   "serverInfo": {
     "name": "py-mcp-inventory-v2",

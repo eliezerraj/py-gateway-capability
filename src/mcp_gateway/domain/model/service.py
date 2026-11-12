@@ -24,6 +24,5 @@ class Service(BaseModel):
     authentication: Optional[ServiceAuthentication]
     discovery: Optional[ServiceDiscovery]
     status: str
-    active_revision_id: str
     created_at: Optional[str]
     updated_at: Optional[str]

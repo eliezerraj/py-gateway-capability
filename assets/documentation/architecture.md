@@ -25,7 +25,7 @@ sequenceDiagram
     Client->>Gateway: Get registered servers
     Gateway->>CedarPolicy: Evaluate workload authorization
     CedarPolicy-->>Gateway: Authorized
-    Gateway->>Catalog: Read active MCP/a2a revisions
+    Gateway->>Catalog: Read active MCP/a2a data
     Catalog-->>Gateway: Server and capability metadata
     Gateway-->>Client: Filtered server catalog
     Client->>Gateway: Get tools/list

@@ -41,7 +41,6 @@ def _to_service(payload: ServiceRequest) -> Service:
             refresh_interval_seconds=payload.discovery.refresh_interval_seconds,
         ) if payload.discovery else None,
         status=payload.status,
-        active_revision_id=payload.active_revision_id,
         created_at=payload.created_at,
         updated_at=payload.updated_at,
     )
@@ -50,15 +49,15 @@ class RegisteredServicesUseCase:
     
     def __init__(self, repo: McpServerRepository):
         logger.info("Initializing RegisteredServicesUseCase")
-        self._repo = repo
+        self.repo = repo
     
-    async def get_registered_service(self, payload: ServiceRequest) -> Service:
+    async def get_registered_service(self, server_id: str) -> Service | None:
         with tracer.start_as_current_span("usecase.get_registered_service") as span:
             logger.info("Executing get_registered_service")
 
             response = None
             try:
-                response = await self._repo.get_registered_service(payload.server_id)
+                response = await self.repo.get_by_id(server_id)
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error getting registered service: {e}")
@@ -73,7 +72,7 @@ class RegisteredServicesUseCase:
             response = None
             
             try:
-                response = await self._repo.create(_to_service(payload))
+                response = await self.repo.create(_to_service(payload))
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error adding registered service: {e}")

@@ -29,3 +29,7 @@ class McpServerRepository(ABC):
     @abstractmethod
     async def delete(self, server_id: str) -> bool:
         raise NotImplementedError
+
+    @abstractmethod
+    async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
+        raise NotImplementedError

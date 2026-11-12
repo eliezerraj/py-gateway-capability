@@ -232,6 +232,117 @@ class PostgresMcpServerRepository(McpServerRepository):
 
         return result == "DELETE 1"
 
+    async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
+        capability_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
+        identifiers_by_type: dict[str, list[str]] = {
+            "tool": [],
+            "prompt": [],
+            "resource": [],
+            "resource_template": [],
+        }
+
+        for capability in capabilities:
+            capability_type = capability.get("capability_type")
+            name = capability.get("name")
+            identifier = capability.get("identifier")
+            payload = capability.get("payload")
+
+            if not capability_type or not isinstance(capability_type, str):
+                raise RepositoryError("capability_type is required for capability sync")
+            if not name or not isinstance(name, str):
+                raise RepositoryError("name is required for capability sync")
+            if not identifier or not isinstance(identifier, str):
+                raise RepositoryError("identifier is required for capability sync")
+            if not isinstance(payload, dict):
+                raise RepositoryError("payload must be an object for capability sync")
+
+            description = capability.get("description")
+            mime_type = capability.get("mime_type")
+            payload_json = json.dumps(payload)
+
+            capability_rows.append(
+                (
+                    capability_type,
+                    name,
+                    identifier,
+                    description,
+                    mime_type,
+                    payload_json,
+                )
+            )
+            identifiers_by_type.setdefault(capability_type, []).append(identifier)
+
+        try:
+            async with self._pool.acquire() as connection:
+                async with connection.transaction():
+                    for row in capability_rows:
+                        capability_type, name, identifier, description, mime_type, payload_json = row
+                        await connection.execute(
+                            """
+                            INSERT INTO mcp_server_capability (
+                                server_id,
+                                capability_type,
+                                name,
+                                identifier,
+                                description,
+                                mime_type,
+                                payload,
+                                enabled,
+                                discovered_at,
+                                updated_at
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW(), NOW())
+                            ON CONFLICT (server_id, capability_type, identifier)
+                            DO UPDATE SET
+                                name = EXCLUDED.name,
+                                description = EXCLUDED.description,
+                                mime_type = EXCLUDED.mime_type,
+                                payload = EXCLUDED.payload,
+                                enabled = TRUE,
+                                discovered_at = NOW(),
+                                updated_at = NOW()
+                            """,
+                            server_id,
+                            capability_type,
+                            name,
+                            identifier,
+                            description,
+                            mime_type,
+                            payload_json,
+                        )
+
+                    for capability_type, identifiers in identifiers_by_type.items():
+                        if identifiers:
+                            await connection.execute(
+                                """
+                                UPDATE mcp_server_capability
+                                SET
+                                    enabled = FALSE,
+                                    updated_at = NOW()
+                                WHERE server_id = $1
+                                  AND capability_type = $2
+                                  AND identifier <> ALL($3::text[])
+                                """,
+                                server_id,
+                                capability_type,
+                                identifiers,
+                            )
+                        else:
+                            await connection.execute(
+                                """
+                                UPDATE mcp_server_capability
+                                SET
+                                    enabled = FALSE,
+                                    updated_at = NOW()
+                                WHERE server_id = $1
+                                  AND capability_type = $2
+                                """,
+                                server_id,
+                                capability_type,
+                            )
+        except asyncpg.PostgresError as exc:
+            raise RepositoryError("failed to sync mcp capabilities") from exc
+
     @staticmethod
     def _resolve_server_id(service: Service) -> str:
         if service.server_id:
