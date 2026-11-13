@@ -12,6 +12,13 @@ from mcp_gateway.domain.model.discovery import (
     DiscoveryServerInfo,
 )
 
+from mcp_gateway.domain.exceptions import (
+    AlreadyExistsError,
+    NotFoundError,
+    RepositoryError,
+    ServiceError,
+)
+
 from mcp_gateway.domain.usecase.health import HealthUseCase
 from mcp_gateway.domain.usecase.discovery import DiscoveryServicesUseCase
 from mcp_gateway.domain.usecase.register import RegisteredServicesUseCase
@@ -95,16 +102,14 @@ async def get_registered_services(payload: ServiceRequest, request: Request) -> 
             message = f"Service {result.name} added successfully"
 
             return ServiceResponse(message=message, service=result)
+        
+        except AppError:
+            raise
         except Exception as e:
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR, str(e)))
-
             logger.error(f"Error adding registered service: {e}")
-            raise AppError(
-                message=f"Error adding registered service: {e}",
-                error="ERROR",
-                status_code=500,
-            ) from e
+            raise ServiceError(message=f"Error adding registered service: {e}") from e
 
 #----------------------------------------------
 # Get registered services endpoint for the gateway
@@ -122,27 +127,20 @@ async def get_registered_service(server_id: str, request: Request) -> ServiceRes
             use_case = RegisteredServicesUseCase(repo)
 
             result = await use_case.get_registered_service(server_id)
+            
             if result is None:
-                raise AppError(
-                    message=f"Service {server_id} not found",
-                    error="NOT_FOUND",
-                    status_code=404,
-                )
+                raise NotFoundError(message=f"Service {server_id} not found")
+            
             message = f"Service {result.name} retrieved successfully"
-
             return ServiceResponse(message=message, service=result)
+        
         except AppError:
             raise
         except Exception as e:
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR, str(e)))
-
             logger.error(f"Error retrieving registered service: {e}")
-            raise AppError(
-                message=f"Error retrieving registered service: {e}",
-                error="ERROR",
-                status_code=500,
-            ) from e
+            raise ServiceError(message=f"Error retrieving registered service: {e}") from e
 
 #----------------------------------------------
 # Discovery
@@ -161,11 +159,8 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
 
             result = await use_case.get_discovery_service(server_id)
             if result is None:
-                raise AppError(
-                    message=f"Service {server_id} not found",
-                    error="NOT_FOUND",
-                    status_code=404,
-                )
+                raise NotFoundError(message=f"Service {server_id} not found")
+            
             service = result["service"]
             tools = result["tools"]
             resources = result["resources"]
@@ -177,15 +172,11 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
                 message=message,
                 discovery=_to_discovery_response(service, tools, resources, prompts, resource_templates),
             )
+            
         except AppError:
             raise
         except Exception as e:
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR, str(e)))
-
             logger.error(f"Error retrieving registered service: {e}")
-            raise AppError(
-                message=f"Error retrieving registered service: {e}",
-                error="ERROR",
-                status_code=500,
-            ) from e
+            raise ServiceError(message=f"Error retrieving registered service: {e}") from e

@@ -1,6 +1,7 @@
 import logging
 
 from mcp_gateway.domain.external.model import ServiceRequest
+from mcp_gateway.domain.exceptions import AppError
 from mcp_gateway.domain.model.service import Service
 
 from mcp_gateway.domain.model.service import (
@@ -46,7 +47,6 @@ def _to_service(payload: ServiceRequest) -> Service:
     )
 
 class RegisteredServicesUseCase:
-    
     def __init__(self, repo: McpServerRepository):
         logger.info("Initializing RegisteredServicesUseCase")
         self.repo = repo
@@ -70,9 +70,10 @@ class RegisteredServicesUseCase:
             logger.info("Executing add_registered_service")
             
             response = None
-            
             try:
                 response = await self.repo.create(_to_service(payload))
+            except AppError:
+                raise
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error adding registered service: {e}")

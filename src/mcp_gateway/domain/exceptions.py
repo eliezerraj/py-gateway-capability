@@ -1,4 +1,4 @@
-from src.mcp_gateway.domain.external.error_response import AppError
+from mcp_gateway.domain.external.error_response import AppError
 
 class InvalidAccessTokenError(AppError):
     pass
@@ -12,11 +12,32 @@ class MissingTokenError(AppError):
 class ForbiddenError(AppError):
     pass
 
-class McpServerAlreadyExistsError(Exception):
-    pass
+class AlreadyExistsError(AppError):
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            error="ALREADY_EXISTS",
+            error_type="AlreadyExistsError",
+            status_code=409,
+        )
 
-class McpServerNotFoundError(Exception):
-    pass
+class NotFoundError(AppError):
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            error="NOT_FOUND",
+            error_type="NotFoundError",
+            status_code=404,
+        )
+
+class ServiceError(AppError):
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            error="INTERNAL_ERROR",
+            error_type="ServiceError",
+            status_code=500,
+        )
 
 class RepositoryError(Exception):
     pass

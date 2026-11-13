@@ -9,7 +9,7 @@ from mcp_gateway.infrastructure.database.postgres import (
     close_postgres_pool,
     create_postgres_pool,
 )
-from mcp_gateway.infrastructure.database.repository.postgres_mcp_server_repository import (
+from mcp_gateway.infrastructure.database.repository.postgres_repository import (
     PostgresMcpServerRepository,
 )
 

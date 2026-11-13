@@ -9,8 +9,8 @@ import asyncpg
 from datetime import timezone
 
 from mcp_gateway.domain.exceptions import (
-    McpServerAlreadyExistsError,
-    McpServerNotFoundError,
+    AlreadyExistsError,
+    NotFoundError,
     RepositoryError,
 )
 from mcp_gateway.domain.model.service import Service
@@ -28,7 +28,7 @@ class PostgresMcpServerRepository(McpServerRepository):
         self._pool = pool
 
     async def create(self, service: Service) -> Service:
-        logger.info(f"================================= Executing create registered service: {service}")
+        logger.info(f"Executing create registered service: {service}")
         with tracer.start_as_current_span("usecase.create_registered_service") as span:
             
             server_id = self._resolve_server_id(service)
@@ -76,9 +76,7 @@ class PostgresMcpServerRepository(McpServerRepository):
                         None,
                     )
             except asyncpg.UniqueViolationError as exc:
-                raise McpServerAlreadyExistsError(
-                    f"mcp server '{server_id}' already exists"
-                ) from exc
+                raise AlreadyExistsError(f"mcp server '{server_id}' already exists") from exc
             except asyncpg.PostgresError as exc:
                 logger.error(
                     "Postgres error on create: %s | sqlstate=%s | detail=%s",
@@ -91,38 +89,42 @@ class PostgresMcpServerRepository(McpServerRepository):
             return self._to_domain(row)
 
     async def get_by_id(self, server_id: str) -> Service | None:
-        try:
-            async with self._pool.acquire() as connection:
-                row = await connection.fetchrow(
-                    """
-                    SELECT
+        logger.info(f"Getting mcp server by id: {server_id}")
+        with tracer.start_as_current_span("usecase.get_mcp_server_by_id") as span:
+            try:
+                async with self._pool.acquire() as connection:
+                    row = await connection.fetchrow(
+                        """
+                        SELECT
+                            server_id,
+                            endpoint,
+                            status,
+                            document,
+                            discovered_at,
+                            content_hash,
+                            created_at,
+                            updated_at
+                        FROM mcp_server_registry
+                        WHERE server_id = $1
+                        """,
                         server_id,
-                        endpoint,
-                        status,
-                        document,
-                        discovered_at,
-                        content_hash,
-                        created_at,
-                        updated_at
-                    FROM mcp_server_registry
-                    WHERE server_id = $1
-                    """,
-                    server_id,
+                    )
+            except asyncpg.PostgresError as exc:
+                logger.error(
+                    "Postgres error on get_by_id: %s | sqlstate=%s | detail=%s",
+                    str(exc),
+                    getattr(exc, "sqlstate", None),
+                    getattr(exc, "detail", None),
                 )
-        except asyncpg.PostgresError as exc:
-            raise RepositoryError("failed to get mcp server by id") from exc
+                raise RepositoryError("failed to get mcp server by id") from exc
 
-        if row is None:
-            return None
+            if row is None:
+                logger.warning("No mcp server found with id: %s", server_id)
+                return None
 
-        return self._to_domain(row)
+            return self._to_domain(row)
 
-    async def list(
-        self,
-        status: str | None = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[Service]:
+    async def list( self, status: str | None = None, limit: int = 100, offset: int = 0, ) -> list[Service]: 
         effective_limit = min(limit, 100)
 
         try:
@@ -213,7 +215,7 @@ class PostgresMcpServerRepository(McpServerRepository):
             raise RepositoryError("failed to update mcp server") from exc
 
         if row is None:
-            raise McpServerNotFoundError(f"mcp server '{server_id}' not found")
+            raise NotFoundError(f"mcp server '{server_id}' not found")
 
         return self._to_domain(row)
 
