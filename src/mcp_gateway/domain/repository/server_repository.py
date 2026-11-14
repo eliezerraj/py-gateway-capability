@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 from mcp_gateway.domain.model.service import Service
 
-class McpServerRepository(ABC):
+class ServerRepository(ABC):
     @abstractmethod
     async def create(self, service: Service) -> Service:
         raise NotImplementedError
@@ -32,4 +32,15 @@ class McpServerRepository(ABC):
 
     @abstractmethod
     async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_outbox_event(
+        self,
+        *,
+        aggregate_type: str,
+        aggregate_id: str,
+        event_type: str,
+        payload: dict,
+    ) -> None:
         raise NotImplementedError

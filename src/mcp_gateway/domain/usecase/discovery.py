@@ -1,6 +1,7 @@
 import logging
 
 from mcp_gateway.infrastructure.adapter.mcp import mcp_client
+from mcp_gateway.domain.external.catalog import CatalogOutboxPayloadBuilder
 
 from opentelemetry import trace
 #---------------------------------
@@ -8,7 +9,6 @@ from opentelemetry import trace
 #---------------------------------
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
-
 
 def _normalize_capability(
     capability_type: str,
@@ -123,6 +123,16 @@ class DiscoveryServicesUseCase:
                     resource_templates=resource_templates,
                 )
                 await self.repo.sync_capabilities(server_id, capabilities)
+                payload_opensearch = CatalogOutboxPayloadBuilder.build(
+                    server_id=server_id,
+                    capabilities=capabilities,
+                )
+                await self.repo.create_outbox_event(
+                    aggregate_type="mcp_server",
+                    aggregate_id=server_id,
+                    event_type="capabilities_discovered",
+                    payload=payload_opensearch,
+                )
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error processing discovery service response: {e}")

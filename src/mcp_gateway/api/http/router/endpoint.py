@@ -3,6 +3,11 @@ import logging
 from fastapi import APIRouter, status, Request
 
 from mcp_gateway.domain.external.model import HealthResponse, ServiceRequest, ServiceResponse
+from mcp_gateway.domain.external.catalog import (
+    CatalogSearchRequest,
+    CatalogSearchResult,
+    CatalogSearchResponse,
+)
 from mcp_gateway.domain.model.discovery import (
     Discovery,
     DiscoveryCapabilities,
@@ -95,7 +100,7 @@ async def get_registered_services(payload: ServiceRequest, request: Request) -> 
     logger.info("Executing get_registered_services endpoint : payload=%s", payload)
     with tracer.start_as_current_span("router.get_registered_service") as span:
         try:
-            repo = request.app.state.container.mcp_server_repository
+            repo = request.app.state.container.server_repository
             use_case = RegisteredServicesUseCase(repo)
 
             result = await use_case.add_registered_service(payload)
@@ -123,7 +128,7 @@ async def get_registered_service(server_id: str, request: Request) -> ServiceRes
     logger.info("Executing get_registered_service endpoint : server_id=%s", server_id)
     with tracer.start_as_current_span("router.get_registered_service") as span:
         try:
-            repo = request.app.state.container.mcp_server_repository
+            repo = request.app.state.container.server_repository
             use_case = RegisteredServicesUseCase(repo)
 
             result = await use_case.get_registered_service(server_id)
@@ -154,7 +159,7 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
     logger.info("Executing get_discovery_info endpoint : server_id=%s", server_id)
     with tracer.start_as_current_span("router.get_discovery_info") as span:
         try:
-            repo = request.app.state.container.mcp_server_repository
+            repo = request.app.state.container.server_repository
             use_case = DiscoveryServicesUseCase(repo)
 
             result = await use_case.get_discovery_service(server_id)
@@ -180,3 +185,36 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
             span.set_status(Status(StatusCode.ERROR, str(e)))
             logger.error(f"Error retrieving registered service: {e}")
             raise ServiceError(message=f"Error retrieving registered service: {e}") from e
+        
+#----------------------------------------------
+# Catalog Search
+@router.post(
+    "/v1/catalog/search",
+    response_model=CatalogSearchResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Search catalog",
+)
+async def search_catalog(payload: CatalogSearchRequest, request: Request) -> CatalogSearchResponse:
+    logger.info("Executing search_catalog endpoint : payload=%s", payload)
+    with tracer.start_as_current_span("router.search_catalog") as span:
+        try:
+            repo = request.app.state.container.server_repository
+            use_case = RegisteredServicesUseCase(repo)
+
+            result = await use_case.search_registered_services(payload)
+            message = f"Service search completed successfully"
+            return CatalogSearchResponse(
+                message=message,
+                results=[
+                    CatalogSearchResult(**item) if isinstance(item, dict) else item
+                    for item in (result or [])
+                ],
+            )
+        
+        except AppError:
+            raise
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            logger.error(f"Error searching catalog: {e}")
+            raise ServiceError(message=f"Error searching catalog: {e}") from e

@@ -14,7 +14,7 @@ from mcp_gateway.domain.exceptions import (
     RepositoryError,
 )
 from mcp_gateway.domain.model.service import Service
-from mcp_gateway.domain.repository.mcp_server_repository import McpServerRepository
+from mcp_gateway.domain.repository.server_repository import ServerRepository
 
 from opentelemetry import trace
 #---------------------------------
@@ -23,7 +23,7 @@ from opentelemetry import trace
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
 
-class PostgresMcpServerRepository(McpServerRepository):
+class PostgresServerRepository(ServerRepository):
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
@@ -235,115 +235,186 @@ class PostgresMcpServerRepository(McpServerRepository):
         return result == "DELETE 1"
 
     async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
-        capability_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
-        identifiers_by_type: dict[str, list[str]] = {
-            "tool": [],
-            "prompt": [],
-            "resource": [],
-            "resource_template": [],
-        }
+        logger.info("Syncing capabilities for server_id=%s", server_id)
+        
+        with tracer.start_as_current_span("usecase.sync_capabilities") as span:
+            capability_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
+            identifiers_by_type: dict[str, list[str]] = {
+                "tool": [],
+                "prompt": [],
+                "resource": [],
+                "resource_template": [],
+            }
 
-        for capability in capabilities:
-            capability_type = capability.get("capability_type")
-            name = capability.get("name")
-            identifier = capability.get("identifier")
-            payload = capability.get("payload")
+            for capability in capabilities:
+                capability_type = capability.get("capability_type")
+                name = capability.get("name")
+                identifier = capability.get("identifier")
+                payload = capability.get("payload")
 
-            if not capability_type or not isinstance(capability_type, str):
-                raise RepositoryError("capability_type is required for capability sync")
-            if not name or not isinstance(name, str):
-                raise RepositoryError("name is required for capability sync")
-            if not identifier or not isinstance(identifier, str):
-                raise RepositoryError("identifier is required for capability sync")
-            if not isinstance(payload, dict):
-                raise RepositoryError("payload must be an object for capability sync")
+                if not capability_type or not isinstance(capability_type, str):
+                    raise RepositoryError("capability_type is required for capability sync")
+                if not name or not isinstance(name, str):
+                    raise RepositoryError("name is required for capability sync")
+                if not identifier or not isinstance(identifier, str):
+                    raise RepositoryError("identifier is required for capability sync")
+                if not isinstance(payload, dict):
+                    raise RepositoryError("payload must be an object for capability sync")
 
-            description = capability.get("description")
-            mime_type = capability.get("mime_type")
-            payload_json = json.dumps(payload)
+                description = capability.get("description")
+                mime_type = capability.get("mime_type")
+                payload_json = json.dumps(payload)
 
-            capability_rows.append(
-                (
-                    capability_type,
-                    name,
-                    identifier,
-                    description,
-                    mime_type,
-                    payload_json,
+                capability_rows.append(
+                    (
+                        capability_type,
+                        name,
+                        identifier,
+                        description,
+                        mime_type,
+                        payload_json,
+                    )
                 )
-            )
-            identifiers_by_type.setdefault(capability_type, []).append(identifier)
+                identifiers_by_type.setdefault(capability_type, []).append(identifier)
 
-        try:
-            async with self._pool.acquire() as connection:
-                async with connection.transaction():
-                    for row in capability_rows:
-                        capability_type, name, identifier, description, mime_type, payload_json = row
-                        await connection.execute(
-                            """
-                            INSERT INTO mcp_server_capability (
+            try:
+                async with self._pool.acquire() as connection:
+                    async with connection.transaction():
+                        for row in capability_rows:
+                            capability_type, name, identifier, description, mime_type, payload_json = row
+                            await connection.execute(
+                                """
+                                INSERT INTO mcp_server_capability (
+                                    server_id,
+                                    capability_type,
+                                    name,
+                                    identifier,
+                                    description,
+                                    mime_type,
+                                    payload,
+                                    enabled,
+                                    discovered_at,
+                                    updated_at
+                                )
+                                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW(), NOW())
+                                ON CONFLICT (server_id, capability_type, identifier)
+                                DO UPDATE SET
+                                    name = EXCLUDED.name,
+                                    description = EXCLUDED.description,
+                                    mime_type = EXCLUDED.mime_type,
+                                    payload = EXCLUDED.payload,
+                                    enabled = TRUE,
+                                    discovered_at = NOW(),
+                                    updated_at = NOW()
+                                """,
                                 server_id,
                                 capability_type,
                                 name,
                                 identifier,
                                 description,
                                 mime_type,
-                                payload,
-                                enabled,
-                                discovered_at,
-                                updated_at
+                                payload_json,
                             )
-                            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW(), NOW())
-                            ON CONFLICT (server_id, capability_type, identifier)
-                            DO UPDATE SET
-                                name = EXCLUDED.name,
-                                description = EXCLUDED.description,
-                                mime_type = EXCLUDED.mime_type,
-                                payload = EXCLUDED.payload,
-                                enabled = TRUE,
-                                discovered_at = NOW(),
-                                updated_at = NOW()
-                            """,
-                            server_id,
-                            capability_type,
-                            name,
-                            identifier,
-                            description,
-                            mime_type,
-                            payload_json,
-                        )
 
-                    for capability_type, identifiers in identifiers_by_type.items():
-                        if identifiers:
-                            await connection.execute(
-                                """
-                                UPDATE mcp_server_capability
-                                SET
-                                    enabled = FALSE,
-                                    updated_at = NOW()
-                                WHERE server_id = $1
-                                  AND capability_type = $2
-                                  AND identifier <> ALL($3::text[])
-                                """,
-                                server_id,
-                                capability_type,
-                                identifiers,
-                            )
-                        else:
-                            await connection.execute(
-                                """
-                                UPDATE mcp_server_capability
-                                SET
-                                    enabled = FALSE,
-                                    updated_at = NOW()
-                                WHERE server_id = $1
-                                  AND capability_type = $2
-                                """,
-                                server_id,
-                                capability_type,
-                            )
+                        for capability_type, identifiers in identifiers_by_type.items():
+                            if identifiers:
+                                await connection.execute(
+                                    """
+                                    UPDATE mcp_server_capability
+                                    SET
+                                        enabled = FALSE,
+                                        updated_at = NOW()
+                                    WHERE server_id = $1
+                                    AND capability_type = $2
+                                    AND identifier <> ALL($3::text[])
+                                    """,
+                                    server_id,
+                                    capability_type,
+                                    identifiers,
+                                )
+                            else:
+                                await connection.execute(
+                                    """
+                                    UPDATE mcp_server_capability
+                                    SET
+                                        enabled = FALSE,
+                                        updated_at = NOW()
+                                    WHERE server_id = $1
+                                    AND capability_type = $2
+                                    """,
+                                    server_id,
+                                    capability_type,
+                                )
+            except asyncpg.PostgresError as exc:
+                logger.error(
+                    "Postgres error on get_by_id: %s | sqlstate=%s | detail=%s",
+                    str(exc),
+                    getattr(exc, "sqlstate", None),
+                    getattr(exc, "detail", None),
+                )
+                raise RepositoryError("failed to sync mcp capabilities") from exc
+
+    async def create_outbox_event(
+        self,
+        *,
+        aggregate_type: str,
+        aggregate_id: str,
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        if not aggregate_type:
+            raise RepositoryError("aggregate_type is required for outbox event")
+        if not aggregate_id:
+            raise RepositoryError("aggregate_id is required for outbox event")
+        if not event_type:
+            raise RepositoryError("event_type is required for outbox event")
+        if not isinstance(payload, dict):
+            raise RepositoryError("payload must be an object for outbox event")
+
+        payload_json = json.dumps(payload)
+
+        try:
+            async with self._pool.acquire() as connection:
+                async with connection.transaction():
+                    await connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS public.outbox_event (
+                            id BIGSERIAL PRIMARY KEY,
+                            aggregate_type VARCHAR(50) NOT NULL,
+                            aggregate_id VARCHAR(150) NOT NULL,
+                            event_type VARCHAR(100) NOT NULL,
+                            payload JSONB NOT NULL,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                            published_at TIMESTAMPTZ,
+                            attempts INTEGER NOT NULL DEFAULT 0,
+                            last_error TEXT
+                        )
+                        """
+                    )
+
+                    await connection.execute(
+                        """
+                        INSERT INTO public.outbox_event (
+                            aggregate_type,
+                            aggregate_id,
+                            event_type,
+                            payload
+                        )
+                        VALUES ($1, $2, $3, $4::jsonb)
+                        """,
+                        aggregate_type,
+                        aggregate_id,
+                        event_type,
+                        payload_json,
+                    )
         except asyncpg.PostgresError as exc:
-            raise RepositoryError("failed to sync mcp capabilities") from exc
+            logger.error(
+                "Postgres error on create_outbox_event: %s | sqlstate=%s | detail=%s",
+                str(exc),
+                getattr(exc, "sqlstate", None),
+                getattr(exc, "detail", None),
+            )
+            raise RepositoryError("failed to create outbox event") from exc
 
     @staticmethod
     def _resolve_server_id(service: Service) -> str:

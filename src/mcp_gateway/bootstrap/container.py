@@ -4,19 +4,19 @@ from dataclasses import dataclass
 
 import asyncpg
 
-from mcp_gateway.domain.repository.mcp_server_repository import McpServerRepository
+from mcp_gateway.domain.repository.server_repository import ServerRepository
 from mcp_gateway.infrastructure.database.postgres import (
     close_postgres_pool,
     create_postgres_pool,
 )
 from mcp_gateway.infrastructure.database.repository.postgres_repository import (
-    PostgresMcpServerRepository,
+    PostgresServerRepository,
 )
 
 @dataclass
 class Container:
     pool: asyncpg.Pool
-    mcp_server_repository: McpServerRepository
+    server_repository: ServerRepository
 
 async def create_container(
     dsn: str,
@@ -31,7 +31,7 @@ async def create_container(
     )
     return Container(
         pool=pool,
-        mcp_server_repository=PostgresMcpServerRepository(pool),
+        server_repository=PostgresServerRepository(pool),
     )
 
 async def shutdown_container(container: Container) -> None:
