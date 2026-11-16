@@ -37,14 +37,7 @@ class PostgresServerRepository(ServerRepository):
             document = self._service_to_document(service)
             document_json = json.dumps(document)
             now = datetime.now(timezone.utc)
-            
-            print("-----------------------")
-            print(f"server_id: {server_id}")
-            print(f"endpoint: {endpoint}")
-            print(f"status_value: {status_value}")
-            print(f"document: {document}")
-            print("-----------------------")
-            
+
             try:
                 async with self._pool.acquire() as connection:
                     row = await connection.fetchrow(
@@ -54,17 +47,15 @@ class PostgresServerRepository(ServerRepository):
                             endpoint,
                             status,
                             document,
-                            discovered_at,
-                            content_hash
+                            discovered_at
                         )
-                        VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+                        VALUES ($1, $2, $3, $4, $5)
                         RETURNING
                             server_id,
                             endpoint,
                             status,
                             document,
                             discovered_at,
-                            content_hash,
                             created_at,
                             updated_at
                         """,
@@ -73,9 +64,9 @@ class PostgresServerRepository(ServerRepository):
                         status_value,
                         document_json,
                         now,
-                        None,
                     )
             except asyncpg.UniqueViolationError as exc:
+                logger.warning(f"Unique violation error on create: {exc}")
                 raise AlreadyExistsError(f"mcp server '{server_id}' already exists") from exc
             except asyncpg.PostgresError as exc:
                 logger.error(
@@ -101,7 +92,6 @@ class PostgresServerRepository(ServerRepository):
                             status,
                             document,
                             discovered_at,
-                            content_hash,
                             created_at,
                             updated_at
                         FROM mcp_server_registry
@@ -138,7 +128,6 @@ class PostgresServerRepository(ServerRepository):
                             status,
                             document,
                             discovered_at,
-                            content_hash,
                             created_at,
                             updated_at
                         FROM mcp_server_registry
@@ -158,7 +147,6 @@ class PostgresServerRepository(ServerRepository):
                             status,
                             document,
                             discovered_at,
-                            content_hash,
                             created_at,
                             updated_at
                         FROM mcp_server_registry
@@ -192,7 +180,6 @@ class PostgresServerRepository(ServerRepository):
                         status = $3,
                         document = $4::jsonb,
                         discovered_at = NOW(),
-                        content_hash = $5,
                         created_at = NOW()
                     WHERE server_id = $1
                     RETURNING
@@ -201,7 +188,6 @@ class PostgresServerRepository(ServerRepository):
                         status,
                         document,
                         discovered_at,
-                        content_hash,
                         created_at,
                         updated_at
                     """,
@@ -218,21 +204,6 @@ class PostgresServerRepository(ServerRepository):
             raise NotFoundError(f"mcp server '{server_id}' not found")
 
         return self._to_domain(row)
-
-    async def delete(self, server_id: str) -> bool:
-        try:
-            async with self._pool.acquire() as connection:
-                result = await connection.execute(
-                    """
-                    DELETE FROM mcp_server_registry
-                    WHERE server_id = $1
-                    """,
-                    server_id,
-                )
-        except asyncpg.PostgresError as exc:
-            raise RepositoryError("failed to delete mcp server") from exc
-
-        return result == "DELETE 1"
 
     async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
         logger.info("Syncing capabilities for server_id=%s", server_id)
@@ -293,10 +264,9 @@ class PostgresServerRepository(ServerRepository):
                                     mime_type,
                                     payload,
                                     enabled,
-                                    discovered_at,
-                                    updated_at
+                                    discovered_at
                                 )
-                                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW(), NOW())
+                                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW())
                                 ON CONFLICT (server_id, capability_type, identifier)
                                 DO UPDATE SET
                                     name = EXCLUDED.name,
@@ -354,14 +324,9 @@ class PostgresServerRepository(ServerRepository):
                 )
                 raise RepositoryError("failed to sync mcp capabilities") from exc
 
-    async def create_outbox_event(
-        self,
-        *,
-        aggregate_type: str,
-        aggregate_id: str,
-        event_type: str,
-        payload: dict,
-    ) -> None:
+    async def create_outbox_event(self, *, aggregate_type: str, aggregate_id: str, event_type: str, payload: dict) -> None:
+        logger.info("Creating outbox event for aggregate_type=%s, aggregate_id=%s, event_type=%s", aggregate_type, aggregate_id, event_type)
+        
         if not aggregate_type:
             raise RepositoryError("aggregate_type is required for outbox event")
         if not aggregate_id:
@@ -376,22 +341,6 @@ class PostgresServerRepository(ServerRepository):
         try:
             async with self._pool.acquire() as connection:
                 async with connection.transaction():
-                    await connection.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS public.outbox_event (
-                            id BIGSERIAL PRIMARY KEY,
-                            aggregate_type VARCHAR(50) NOT NULL,
-                            aggregate_id VARCHAR(150) NOT NULL,
-                            event_type VARCHAR(100) NOT NULL,
-                            payload JSONB NOT NULL,
-                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            published_at TIMESTAMPTZ,
-                            attempts INTEGER NOT NULL DEFAULT 0,
-                            last_error TEXT
-                        )
-                        """
-                    )
-
                     await connection.execute(
                         """
                         INSERT INTO public.outbox_event (
@@ -454,13 +403,16 @@ class PostgresServerRepository(ServerRepository):
         else:
             document = {}
 
+        document.pop("created_at", None)
+        document.pop("updated_at", None)
+
         if "server_id" not in document:
             document["server_id"] = row["server_id"]
         if "status" not in document:
             document["status"] = row["status"]
         if "created_at" not in document and created_at is not None:
             document["created_at"] = created_at.isoformat()
-        if "updated_at" not in document and updated_at is not None:
+        if updated_at is not None:
             document["updated_at"] = updated_at.isoformat()
         if "endpoint" not in document:
             document["endpoint"] = {"url": row["endpoint"], "transport": "streamable-http"}

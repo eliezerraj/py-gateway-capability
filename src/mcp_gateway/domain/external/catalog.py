@@ -48,9 +48,7 @@ class CatalogDocumentSource:
     operation: str = "read"
     domain: str = "generic"
     side_effect: bool = False
-    mime_type: str | None = None
     enabled: bool = True
-    source_content_hash: str = ""
     source_updated_at: str = ""
 
 
@@ -139,7 +137,6 @@ class CatalogOutboxPayloadBuilder:
         operation = cls._resolve_operation(capability_type, name)
         domain = cls._resolve_domain(server_id)
         side_effect = cls._resolve_side_effect(capability_type, operation)
-        source_content_hash = cls._hash_json(payload_obj)
         search_text = cls._build_search_text(description, operation, input_fields, template_variables)
 
         source = CatalogDocumentSource(
@@ -155,9 +152,7 @@ class CatalogOutboxPayloadBuilder:
             operation=operation,
             domain=domain,
             side_effect=side_effect,
-            mime_type=capability.get("mime_type"),
             enabled=True,
-            source_content_hash=source_content_hash,
             source_updated_at=discovered_at,
         )
 

@@ -43,39 +43,12 @@ router = APIRouter(
     tags=["Health"],
 )
 
-def _to_discovery_response(service, tools, resources, prompts, resource_templates) -> Discovery:
-    discovered_at = service.updated_at or service.created_at or ""
-    content_hash = getattr(service, "content_hash", "") or ""
-    version = getattr(service, "active_revision_id", "") or "unknown"
-
-    return Discovery(
-        serverId=service.server_id,
-        protocolVersion="2025-06-18",
-        serverInfo=DiscoveryServerInfo(
-            name=service.name,
-            version=version,
-        ),
-        capabilities=DiscoveryCapabilities(
-            tools=DiscoveryListChangedCapability(listChanged=True),
-            prompts=DiscoveryListChangedCapability(listChanged=True),
-            resources=DiscoveryResourcesCapability(
-                listChanged=True,
-                subscribe=True,
-            ),
-        ),
-        tools=tools,
-        prompts=prompts,
-        resources=resources,
-        resourceTemplates=resource_templates,
-        discoveredAt=discovered_at,
-        contentHash=content_hash,
-    )
-
 #----------------------------------------------
 # Registered health endpoint for the gateway
 @router.get(
     "/health",
     response_model=HealthResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_200_OK,
     summary="Check gateway health",
 )
@@ -93,6 +66,7 @@ def get_health() -> HealthResponse:
 @router.post(
     "/v1/service",
     response_model=ServiceResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_201_CREATED,
     summary="Post registered services",
 )
@@ -121,6 +95,7 @@ async def get_registered_services(payload: ServiceRequest, request: Request) -> 
 @router.get(
     "/v1/service/{server_id}",
     response_model=ServiceResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_200_OK,
     summary="Get registered service by server id",
 )
@@ -149,11 +124,12 @@ async def get_registered_service(server_id: str, request: Request) -> ServiceRes
 
 #----------------------------------------------
 # Discovery
-@router.get(
+@router.post(
     "/v1/discovery/{server_id}",
     response_model=DiscoveryResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_200_OK,
-    summary="Get discovery information for service by server id",
+    summary="Post discovery information for service by server id",
 )
 async def get_discovery_info(server_id: str, request: Request) -> DiscoveryResponse:
     logger.info("Executing get_discovery_info endpoint : server_id=%s", server_id)
@@ -166,16 +142,11 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
             if result is None:
                 raise NotFoundError(message=f"Service {server_id} not found")
             
-            service = result["service"]
-            tools = result["tools"]
-            resources = result["resources"]
-            prompts = result["prompts"]
-            resource_templates = result["resource_templates"]
-            message = f"Service {service.name} discovery retrieved successfully"
+            message = f"Service {server_id} discovery retrieved successfully"
 
             return DiscoveryResponse(
                 message=message,
-                discovery=_to_discovery_response(service, tools, resources, prompts, resource_templates),
+                discovery=result
             )
             
         except AppError:
@@ -191,6 +162,7 @@ async def get_discovery_info(server_id: str, request: Request) -> DiscoveryRespo
 @router.post(
     "/v1/catalog/search",
     response_model=CatalogSearchResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_201_CREATED,
     summary="Search catalog",
 )

@@ -58,6 +58,9 @@ class RegisteredServicesUseCase:
             response = None
             try:
                 response = await self.repo.get_by_id(server_id)
+            except AppError as e:
+                span.record_exception(e)
+                raise
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error getting registered service: {e}")
@@ -72,7 +75,8 @@ class RegisteredServicesUseCase:
             response = None
             try:
                 response = await self.repo.create(_to_service(payload))
-            except AppError:
+            except AppError as e:
+                span.record_exception(e)
                 raise
             except Exception as e:
                 span.record_exception(e)

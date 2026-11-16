@@ -4,6 +4,16 @@ from mcp_gateway.infrastructure.adapter.mcp import mcp_client
 from mcp_gateway.domain.external.catalog import CatalogOutboxPayloadBuilder
 
 from opentelemetry import trace
+
+from mcp_gateway.domain.model.discovery import (
+    Discovery,
+    DiscoveryCapabilities,
+    DiscoveryListChangedCapability,
+    DiscoveryResourcesCapability,
+    DiscoveryResponse,
+    DiscoveryServerInfo,
+)
+
 #---------------------------------
 # Configure logging
 #---------------------------------
@@ -43,7 +53,6 @@ def _normalize_capability(
         "payload": payload,
     }
 
-
 def _build_capability_records(
     tools: list[dict],
     prompts: list[dict],
@@ -78,7 +87,6 @@ def _build_capability_records(
         )
 
     return capabilities
-
 
 class DiscoveryServicesUseCase:
     
@@ -123,25 +131,43 @@ class DiscoveryServicesUseCase:
                     resource_templates=resource_templates,
                 )
                 await self.repo.sync_capabilities(server_id, capabilities)
+                
                 payload_opensearch = CatalogOutboxPayloadBuilder.build(
                     server_id=server_id,
                     capabilities=capabilities,
                 )
+                
                 await self.repo.create_outbox_event(
                     aggregate_type="mcp_server",
                     aggregate_id=server_id,
                     event_type="capabilities_discovered",
                     payload=payload_opensearch,
                 )
+                
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error processing discovery service response: {e}")
                 raise
 
-            return {
-                "service": service,
+            discovery = {
+                "serverId": service.server_id,
+                "protocolVersion": "2025-06-18",
+                "serverInfo": DiscoveryServerInfo(
+                    name=service.name,
+                ),
+                "capabilities": DiscoveryCapabilities(
+                    tools=DiscoveryListChangedCapability(listChanged=True),
+                    prompts=DiscoveryListChangedCapability(listChanged=True),
+                    resources=DiscoveryResourcesCapability(
+                        listChanged=True,
+                        subscribe=True,
+                    ),
+                ),
                 "tools": tools,
-                "resources": resources,
                 "prompts": prompts,
-                "resource_templates": resource_templates,
+                "resources": resources,
+                "resourceTemplates": resource_templates,
+                "discoveredAt": service.created_at or "",
             }
+                        
+            return discovery

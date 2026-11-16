@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 class DiscoveryServerInfo(BaseModel):
     name: str
-    version: str
 
 class DiscoveryListChangedCapability(BaseModel):
     listChanged: bool = Field(default=True)
@@ -30,7 +29,6 @@ class Discovery(BaseModel):
     resources: list[Any] = Field(default_factory=list)
     resourceTemplates: list[Any] = Field(default_factory=list)
     discoveredAt: str
-    contentHash: str
 
 class DiscoveryResponse(BaseModel):
     message: str

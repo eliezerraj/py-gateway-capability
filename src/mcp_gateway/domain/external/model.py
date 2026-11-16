@@ -39,4 +39,4 @@ class ServiceRequest:
     discovery: Optional[ServiceDiscoveryRequest]
     status: str
     created_at: Optional[str]
-    updated_at: Optional[str]
+    updated_at: Optional[str] = None
