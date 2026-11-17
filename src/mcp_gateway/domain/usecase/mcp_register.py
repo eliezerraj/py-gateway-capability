@@ -11,7 +11,7 @@ from mcp_gateway.domain.model.service import (
     ServiceDiscovery,
 )
 
-from mcp_gateway.domain.repository.server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
 
 from opentelemetry import trace
 

@@ -14,7 +14,7 @@ from mcp_gateway.domain.exceptions import (
     RepositoryError,
 )
 from mcp_gateway.domain.model.service import Service
-from mcp_gateway.domain.repository.server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
 
 from opentelemetry import trace
 #---------------------------------
@@ -205,17 +205,21 @@ class PostgresServerRepository(ServerRepository):
 
         return self._to_domain(row)
 
-    async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
-        logger.info("Syncing capabilities for server_id=%s", server_id)
+    async def sync_capabilities(
+        self,
+        server_id: str,
+        capabilities: list[dict],
+        provider_type: str = "MCP",
+    ) -> None:
+        logger.info(
+            "Syncing capabilities for provider_type=%s, provider_id=%s",
+            provider_type,
+            server_id,
+        )
         
         with tracer.start_as_current_span("usecase.sync_capabilities") as span:
-            capability_rows: list[tuple[str, str, str, str | None, str | None, str]] = []
-            identifiers_by_type: dict[str, list[str]] = {
-                "tool": [],
-                "prompt": [],
-                "resource": [],
-                "resource_template": [],
-            }
+            capability_rows: list[tuple[str, str, str, str | None, str]] = []
+            identifiers_by_type: dict[str, list[str]] = {}
 
             for capability in capabilities:
                 capability_type = capability.get("capability_type")
@@ -233,7 +237,6 @@ class PostgresServerRepository(ServerRepository):
                     raise RepositoryError("payload must be an object for capability sync")
 
                 description = capability.get("description")
-                mime_type = capability.get("mime_type")
                 payload_json = json.dumps(payload)
 
                 capability_rows.append(
@@ -242,7 +245,6 @@ class PostgresServerRepository(ServerRepository):
                         name,
                         identifier,
                         description,
-                        mime_type,
                         payload_json,
                     )
                 )
@@ -252,37 +254,36 @@ class PostgresServerRepository(ServerRepository):
                 async with self._pool.acquire() as connection:
                     async with connection.transaction():
                         for row in capability_rows:
-                            capability_type, name, identifier, description, mime_type, payload_json = row
+                            capability_type, name, identifier, description, payload_json = row
                             await connection.execute(
                                 """
-                                INSERT INTO mcp_server_capability (
-                                    server_id,
+                                INSERT INTO capability_catalog (
+                                    provider_type,
+                                    provider_id,
                                     capability_type,
                                     name,
                                     identifier,
                                     description,
-                                    mime_type,
                                     payload,
                                     enabled,
                                     discovered_at
                                 )
                                 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, TRUE, NOW())
-                                ON CONFLICT (server_id, capability_type, identifier)
+                                ON CONFLICT (provider_type, provider_id, capability_type, identifier)
                                 DO UPDATE SET
                                     name = EXCLUDED.name,
                                     description = EXCLUDED.description,
-                                    mime_type = EXCLUDED.mime_type,
                                     payload = EXCLUDED.payload,
                                     enabled = TRUE,
                                     discovered_at = NOW(),
                                     updated_at = NOW()
                                 """,
+                                provider_type,
                                 server_id,
                                 capability_type,
                                 name,
                                 identifier,
                                 description,
-                                mime_type,
                                 payload_json,
                             )
 
@@ -290,14 +291,16 @@ class PostgresServerRepository(ServerRepository):
                             if identifiers:
                                 await connection.execute(
                                     """
-                                    UPDATE mcp_server_capability
+                                    UPDATE capability_catalog
                                     SET
                                         enabled = FALSE,
                                         updated_at = NOW()
-                                    WHERE server_id = $1
-                                    AND capability_type = $2
-                                    AND identifier <> ALL($3::text[])
+                                    WHERE provider_type = $1
+                                    AND provider_id = $2
+                                    AND capability_type = $3
+                                    AND identifier <> ALL($4::text[])
                                     """,
+                                    provider_type,
                                     server_id,
                                     capability_type,
                                     identifiers,
@@ -305,13 +308,15 @@ class PostgresServerRepository(ServerRepository):
                             else:
                                 await connection.execute(
                                     """
-                                    UPDATE mcp_server_capability
+                                    UPDATE capability_catalog
                                     SET
                                         enabled = FALSE,
                                         updated_at = NOW()
-                                    WHERE server_id = $1
-                                    AND capability_type = $2
+                                    WHERE provider_type = $1
+                                    AND provider_id = $2
+                                    AND capability_type = $3
                                     """,
+                                    provider_type,
                                     server_id,
                                     capability_type,
                                 )

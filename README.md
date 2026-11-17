@@ -41,9 +41,9 @@ Repository layer for `mcp_server_registry` is implemented with:
 }
 ```
 
-## Capability persistence (`mcp_server_capability`)
+## Capability persistence (`capability_catalog`)
 
-During discovery, MCP capabilities are persisted with the complete original object in `payload` (`JSONB`).
+During discovery, capabilities are persisted with the complete original object in `payload` (`JSONB`).
 
 `identifier` is populated as:
 
@@ -113,3 +113,40 @@ Discovery now stores an OpenSearch-ready payload in `outbox_event.payload` with:
 - `serverId`, `catalogGeneration`, `discoveredAt`
 - `documents[]` with deterministic `documentId = sha256("<server_id>:<capability_type>:<identifier>")`
 - `statistics` (`tools`, `prompts`, `resources`, `resource_templates`, `total`)
+
+## A2A Agent Registry (`a2a_agent_registry`)
+
+A new A2A-prefixed registration flow was added to persist agent cards for future discovery.
+
+- Endpoint: `POST /v1/a2a/service`
+- Repository: `PostgresA2AAgentRepository`
+- Use case: `A2ARegisteredAgentsUseCase`
+
+Discovery endpoints:
+
+- MCP: `POST /v1/discovery/{server_id}`
+- A2A: `POST /v1/discovery/a2a/{agent_id}`
+
+Request body:
+
+```json
+{
+  "agent_id": "py-statistic-a2a-v2",
+  "name": "Production py-statistic-a2a-v2 agent",
+  "description": "Order lookup and reservation capabilities",
+  "endpoint": {
+    "url": "http://127.0.0.1:7600",
+    "transport": "json-rpc"
+  },
+  "authentication": {
+    "type": "oauth2",
+    "audience": "py-statistic-a2a-v2"
+  },
+  "discovery": {
+    "enabled": true,
+    "refresh_interval_seconds": 900
+  },
+  "status": "ACTIVE",
+  "created_at": "2026-11-03T20:20:00-03:00"
+}
+```

@@ -33,3 +33,7 @@ class Discovery(BaseModel):
 class DiscoveryResponse(BaseModel):
     message: str
     discovery: Discovery
+    
+class DiscoveryA2aResponse(BaseModel):
+    message: str
+    discovery: dict[str, Any] = Field(default_factory=dict)

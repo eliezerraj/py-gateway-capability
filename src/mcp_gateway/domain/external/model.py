@@ -1,6 +1,12 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pydantic import Field
 from mcp_gateway.domain.model.service import Service
+from mcp_gateway.domain.model.a2a_agent import (
+    A2AAgent,
+    A2AAgentAuthentication,
+    A2AAgentDiscovery,
+    A2AAgentEndpoint,
+)
 from typing import Optional
 
 # Result for the health check
@@ -39,4 +45,33 @@ class ServiceRequest:
     discovery: Optional[ServiceDiscoveryRequest]
     status: str
     created_at: Optional[str]
+    updated_at: Optional[str] = None
+
+@dataclass(frozen=True)
+class A2AAgentResponse:
+    message: str
+    agent: A2AAgent
+
+@dataclass(frozen=True)
+class A2AAgentRequest:
+    agent_id: str
+    name: str
+    description: str
+    endpoint: Optional[A2AAgentEndpoint]
+    authentication: Optional[A2AAgentAuthentication]
+    discovery: Optional[A2AAgentDiscovery] = None
+    owner: Optional[dict] = None
+    url: Optional[str] = None
+    version: Optional[str] = None
+    provider: Optional[dict] = None
+    supportedInterfaces: list[dict] = field(default_factory=list)
+    capabilities: Optional[dict] = None
+    securitySchemes: Optional[dict] = None
+    security: list[dict] = field(default_factory=list)
+    defaultInputModes: list[str] = field(default_factory=list)
+    defaultOutputModes: list[str] = field(default_factory=list)
+    skills: list[dict] = field(default_factory=list)
+    status: str = "ACTIVE"
+    discovered_at: Optional[str] = None
+    created_at: Optional[str] = None
     updated_at: Optional[str] = None

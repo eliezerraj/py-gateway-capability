@@ -27,7 +27,12 @@ class ServerRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def sync_capabilities(self, server_id: str, capabilities: list[dict]) -> None:
+    async def sync_capabilities(
+        self,
+        server_id: str,
+        capabilities: list[dict],
+        provider_type: str = "MCP",
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod

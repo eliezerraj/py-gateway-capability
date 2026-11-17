@@ -266,9 +266,6 @@ payload_example:
     type: oauth2
     audience: mcp-inventory
 
-  owner:
-    team: inventory-platform
-
   discovery:
     enabled: true
     refreshIntervalSeconds: 900
