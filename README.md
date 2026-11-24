@@ -150,3 +150,80 @@ Request body:
   "created_at": "2026-11-03T20:20:00-03:00"
 }
 ```
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent Workload
+    participant Gateway as Capability Gateway
+    participant Catalog as Capability Catalog
+    participant Policy as Policy Engine
+    participant MCP as Inventory MCP Server
+    participant A2A as Statistics A2A Agent
+
+    Agent->>Gateway: initialize
+    Gateway-->>Agent: Gateway MCP capabilities
+
+    Agent->>Gateway: tools/list
+    Gateway->>Policy: Resolve authorized capabilities
+    Policy-->>Gateway: Authorized capability IDs
+    Gateway->>Catalog: Load authorized definitions
+    Catalog-->>Gateway: MCP tools and synthetic A2A tools
+    Gateway-->>Agent: Unified authorized tool list
+
+    alt MCP-backed tool
+        Agent->>Gateway: tools/call inventory__post_product
+        Gateway->>Catalog: Resolve public tool name
+        Catalog-->>Gateway: providerType=MCP
+        Gateway->>Policy: Authorize arguments
+        Policy-->>Gateway: Allow
+        Gateway->>MCP: tools/call post_product
+        MCP-->>Gateway: MCP result
+        Gateway-->>Agent: Normalized MCP result
+    else A2A-backed tool
+        Agent->>Gateway: tools/call statistics__compute
+        Gateway->>Catalog: Resolve public tool name
+        Catalog-->>Gateway: providerType=A2A
+        Gateway->>Policy: Authorize arguments
+        Policy-->>Gateway: Allow
+        Gateway->>A2A: message/send for statistics.compute
+        A2A-->>Gateway: A2A message or task result
+        Gateway-->>Agent: Normalized MCP result
+    end
+```
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Orchestrator as Agent Orchestrator
+    participant LLM
+    participant Search as Capability Search Engine
+    participant Gateway as MCP Gateway
+    participant MCP as Inventory MCP Server
+
+    User->>Orchestrator: Create SKU-100 with product details
+
+    Orchestrator->>Search: Search relevant capabilities
+    Search-->>Orchestrator: post_product + invocation schema
+
+    Orchestrator->>LLM: User request + candidate + inputSchema
+    LLM-->>Orchestrator: Selected capability + proposed arguments
+
+    Orchestrator->>Orchestrator: Validate arguments against inputSchema
+
+    alt Arguments valid
+        Orchestrator->>Gateway: tools/call inventory__post_product
+        Gateway->>Gateway: Resolve public capability
+        Gateway->>Gateway: Authorize and validate again
+        Gateway->>MCP: tools/call post_product
+        MCP-->>Gateway: MCP tool result
+        Gateway-->>Orchestrator: Normalized MCP result
+
+        Orchestrator->>LLM: Tool result
+        LLM-->>Orchestrator: User-facing response
+        Orchestrator-->>User: Product created
+    else Required information missing
+        Orchestrator->>LLM: Schema validation errors
+        LLM-->>Orchestrator: Ask user for missing information
+        Orchestrator-->>User: Please provide price and inventory
+    end
+```

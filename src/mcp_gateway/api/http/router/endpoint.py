@@ -128,6 +128,37 @@ async def get_registered_a2a_agent(payload: A2AAgentRequest, request: Request) -
             raise ServiceError(message=f"Error adding registered a2a agent: {e}") from e
 
 #----------------------------------------------
+# Get registered a2a endpoint for the gateway
+@router.get(
+    "/v1/a2a/service/{server_id}",
+    response_model=A2AAgentResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_200_OK,
+    summary="Get registered a2a agent by server id",
+)
+async def get_registered_a2a_service(server_id: str, request: Request) -> A2AAgentResponse:
+    logger.info("Executing get_registered_a2a_service endpoint : server_id=%s", server_id)
+    with tracer.start_as_current_span("router.get_registered_a2a_service") as span:
+        try:
+            repo = request.app.state.container.a2a_agent_repository
+            use_case = A2ARegisteredAgentsUseCase(repo)
+
+            result = await use_case.get_registered_a2a_agent(server_id)
+            if result is None:
+                raise NotFoundError(message=f"A2A agent {server_id} not found")
+
+            message = f"A2A agent {result.agent_id} retrieved successfully"
+            return A2AAgentResponse(message=message, agent=result)
+
+        except AppError:
+            raise
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            logger.error(f"Error retrieving registered a2a agent: {e}")
+            raise ServiceError(message=f"Error retrieving registered a2a agent: {e}") from e
+
+#----------------------------------------------
 # Get registered services endpoint for the gateway
 @router.get(
     "/v1/mcp/service/{server_id}",
@@ -258,3 +289,6 @@ async def search_catalog(payload: CatalogSearchRequest, request: Request) -> Cat
             span.set_status(Status(StatusCode.ERROR, str(e)))
             logger.error(f"Error searching catalog: {e}")
             raise ServiceError(message=f"Error searching catalog: {e}") from e
+
+#----------------------------------------------
+# Call A2A Service/ MCP Service

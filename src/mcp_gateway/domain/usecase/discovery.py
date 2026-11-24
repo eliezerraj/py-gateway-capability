@@ -259,6 +259,18 @@ class DiscoveryServicesUseCase:
                     capabilities,
                     provider_type="A2A",
                 )
+
+                payload_opensearch = CatalogOutboxPayloadBuilder.build(
+                    server_id=agent_id,
+                    capabilities=capabilities,
+                )
+
+                await self.repo.create_outbox_event(
+                    aggregate_type="a2a_agent",
+                    aggregate_id=agent_id,
+                    event_type="capabilities_discovered",
+                    payload=payload_opensearch,
+                )
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error processing a2a discovery response: {e}")

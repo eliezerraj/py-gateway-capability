@@ -61,3 +61,23 @@ class A2ARegisteredAgentsUseCase:
                 raise
 
             return response
+
+    async def get_registered_a2a_agent(self, server_id: str) -> A2AAgent | None:
+        with tracer.start_as_current_span("usecase.get_registered_a2a_agent") as span:
+            logger.info("Executing get_registered_a2a_agent")
+
+            response = None
+            try:
+                document = await self.repo.get_document_by_id(server_id)
+                if document is None:
+                    return None
+                response = A2AAgent(**document)
+            except AppError as e:
+                span.record_exception(e)
+                raise
+            except Exception as e:
+                span.record_exception(e)
+                logger.error(f"Error getting registered a2a agent: {e}")
+                raise
+
+            return response
