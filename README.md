@@ -1,4 +1,4 @@
-# py-mcp-gateway
+# py-gateway-capability
 go-mcp-gateway
 
 ## MCP Server Registry Repository
@@ -112,6 +112,7 @@ Discovery now stores an OpenSearch-ready payload in `outbox_event.payload` with:
 - `schemaVersion`, `eventType`, `operation`, `index`
 - `serverId`, `catalogGeneration`, `discoveredAt`
 - `documents[]` with deterministic `documentId = sha256("<server_id>:<capability_type>:<identifier>")`
+- `documents[].source.input_tokens` generated from `input_fields` normalization (for example, `checkout.order.order_number` → `checkout order order number`, `customer_id` → `customer id`)
 - `statistics` (`tools`, `prompts`, `resources`, `resource_templates`, `total`)
 
 ## A2A Agent Registry (`a2a_agent_registry`)

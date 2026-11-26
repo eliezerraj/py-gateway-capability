@@ -2,7 +2,7 @@
 
 export VERSION=1.0
 export ACCOUNT=local:localhost
-export APP_NAME=py-mcp-gateway-v2
+export APP_NAME=py-gateway-capability-v2
 export HOST=127.0.0.1
 export PORT=7499
 export SESSION_TIMEOUT=700
@@ -24,7 +24,7 @@ export DB_SSLMODE=disable
 export AUTHORIZATION_DRY_RUN=True
 export AUTHORIZATION_JWKS_URL=http://localhost:7100/v1/.well-known/jwks.json
 export AUTHORIZATION_ISSUER=go-authorizer-v2
-export AUTHORIZATION_AUDIENCE=py-mcp-gateway-v2
+export AUTHORIZATION_AUDIENCE=py-gateway-capability-v2
 
 export ENABLE_DNS_REBINDING_PROTECTION=False
 export ALLOWED_HOSTS=localhost:*,127.0.0.1:*,py-mcp-inventory-v2:*
@@ -33,10 +33,12 @@ export ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,http://py-mcp-inven
 export MCP_PROTECTED_RESOURCE=http://localhost:7499
 export AUTHORIZATION_SERVER=http://localhost:7100
 
+export EMBEDDED_SERVICE_TEI_ENDPOINT=http://127.0.0.1:6500/v1/embed/tei
+
 export LOG_LEVEL=INFO
 export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
 export OTEL_STDOUT_LOG_GROUP=False
-export LOG_GROUP=/mnt/c/Eliezer/log/py-mcp-gateway-v2.log
+export LOG_GROUP=/mnt/c/Eliezer/log/py-gateway-capability-v2.log
 
 # Default target
 all: env activate run

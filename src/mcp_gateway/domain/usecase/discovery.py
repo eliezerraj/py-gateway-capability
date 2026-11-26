@@ -88,7 +88,6 @@ def _build_capability_records(
 
     return capabilities
 
-
 def _build_a2a_skill_capability_records(agent_card: dict) -> list[dict]:
     capabilities: list[dict] = []
     skills = agent_card.get("skills")

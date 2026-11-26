@@ -43,6 +43,7 @@ class CatalogDocumentSource:
     description: str
     search_text: str
     input_fields: list[str] = field(default_factory=list)
+    input_tokens: list[str] = field(default_factory=list)
     required_fields: list[str] = field(default_factory=list)
     template_variables: list[str] = field(default_factory=list)
     operation: str = "read"
@@ -133,6 +134,7 @@ class CatalogOutboxPayloadBuilder:
         payload_obj = payload if isinstance(payload, dict) else {}
 
         input_fields, required_fields = cls._extract_input_fields(payload_obj)
+        input_tokens = cls._build_input_tokens(input_fields)
         template_variables = cls._extract_template_variables(capability_type, identifier)
         operation = cls._resolve_operation(capability_type, name)
         domain = cls._resolve_domain(server_id)
@@ -147,6 +149,7 @@ class CatalogOutboxPayloadBuilder:
             description=description,
             search_text=search_text,
             input_fields=input_fields,
+            input_tokens=input_tokens,
             required_fields=required_fields,
             template_variables=template_variables,
             operation=operation,
@@ -224,6 +227,15 @@ class CatalogOutboxPayloadBuilder:
         if capability_type != "resource_template":
             return []
         return [match.strip() for match in cls._RESOURCE_TEMPLATE_VAR_PATTERN.findall(identifier) if match.strip()]
+
+    @classmethod
+    def _build_input_tokens(cls, input_fields: list[str]) -> list[str]:
+        tokens: list[str] = []
+        for field_name in input_fields:
+            normalized = cls._normalize_space(re.sub(r"[._]+", " ", field_name)).lower()
+            if normalized and normalized not in tokens:
+                tokens.append(normalized)
+        return tokens
 
     @staticmethod
     def _resolve_operation(capability_type: str, name: str) -> str:

@@ -3,7 +3,7 @@ requires = ["setuptools>=75.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-mcp-gateway-v2"
+name = "py-gateway-capability-v2"
 version = "0.1.0"
 description = "A MCP gateway."
 dependencies = [
