@@ -119,6 +119,15 @@ class CatalogOutboxPayloadBuilder:
         return payload.to_dict()
 
     @classmethod
+    def build_source(
+        cls,
+        server_id: str,
+        capability: dict[str, Any],
+        discovered_at: str,
+    ) -> CatalogDocumentSource:
+        return cls._to_document(server_id, capability, discovered_at).source
+
+    @classmethod
     def _to_document(
         cls,
         server_id: str,

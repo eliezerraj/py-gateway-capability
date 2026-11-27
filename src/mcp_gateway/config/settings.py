@@ -38,7 +38,7 @@ class Settings:
         self.MCP_PROTECTED_RESOURCE = os.getenv("MCP_PROTECTED_RESOURCE")
         self.AUTHORIZATION_SERVER = os.getenv("AUTHORIZATION_SERVER")
         
-        self.EMBEDDED_SERVICE_URL = os.getenv("EMBEDDED_SERVICE_URL")
+        self.EMBEDDED_SERVICE_TEI_ENDPOINT = os.getenv("EMBEDDED_SERVICE_TEI_ENDPOINT")
 
         self.METRICS_HOST = os.getenv("METRICS_HOST")
         self.METRICS_PORT = int(os.getenv("METRICS_PORT", 8601))

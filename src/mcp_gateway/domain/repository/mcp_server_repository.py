@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 from mcp_gateway.domain.model.service import Service
 
-class ServerRepository(ABC):
+class MCPServerRepository(ABC):
     @abstractmethod
     async def create(self, service: Service) -> Service:
         raise NotImplementedError

@@ -11,7 +11,7 @@ from mcp_gateway.domain.model.service import (
     ServiceDiscovery,
 )
 
-from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import MCPServerRepository
 
 from opentelemetry import trace
 
@@ -47,7 +47,7 @@ def _to_service(payload: ServiceRequest) -> Service:
     )
 
 class RegisteredServicesUseCase:
-    def __init__(self, repo: ServerRepository):
+    def __init__(self, repo: MCPServerRepository):
         logger.info("Initializing RegisteredServicesUseCase")
         self.repo = repo
     

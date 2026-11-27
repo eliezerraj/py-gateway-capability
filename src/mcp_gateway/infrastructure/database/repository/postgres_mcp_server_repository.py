@@ -14,7 +14,7 @@ from mcp_gateway.domain.exceptions import (
     RepositoryError,
 )
 from mcp_gateway.domain.model.service import Service
-from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import MCPServerRepository
 
 from opentelemetry import trace
 #---------------------------------
@@ -23,7 +23,7 @@ from opentelemetry import trace
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
 
-class PostgresServerRepository(ServerRepository):
+class PostgresMCPServerRepository(MCPServerRepository):
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
@@ -75,7 +75,7 @@ class PostgresServerRepository(ServerRepository):
                     getattr(exc, "sqlstate", None),
                     getattr(exc, "detail", None),
                 )
-                raise RepositoryError(f"failed to createmcp_server_registry {str(exc)}") from exc
+                raise RepositoryError(f"failed to create mcp_server_registry {str(exc)}") from exc
 
             return self._to_domain(row)
 

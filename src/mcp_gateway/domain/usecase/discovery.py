@@ -1,9 +1,12 @@
 import logging
+from datetime import datetime, timezone
 
 from mcp_gateway.infrastructure.adapter.mcp import mcp_client
 from mcp_gateway.domain.external.catalog import CatalogOutboxPayloadBuilder
+from mcp_gateway.domain.model.embedding import EmbeddingRequest
 from mcp_gateway.domain.repository.a2a_agent_repository import A2AAgentRepository
-from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import MCPServerRepository
+from mcp_gateway.domain.usecase.embedded_service_usecase import EmbeddedServiceUseCase
 from mcp_gateway.infrastructure.adapter.http.http_client import HttpAdapter
 
 from opentelemetry import trace
@@ -123,18 +126,66 @@ class DiscoveryServicesUseCase:
     
     def __init__(
         self,
-        repo: ServerRepository,
+        repo: MCPServerRepository,
         a2a_repo: A2AAgentRepository,
+        embedded_service: EmbeddedServiceUseCase | None = None,
     ):
         logger.info("Initializing DiscoveryServicesUseCase")
         self.repo = repo
         self.a2a_repo = a2a_repo
         self.http_adapter = HttpAdapter()
+        self.embedded_service = embedded_service or EmbeddedServiceUseCase()
+
+    async def _build_embedding_payloads(
+        self,
+        server_id: str,
+        capabilities: list[dict],
+    ) -> list[dict]:
+        source_updated_at = datetime.now(timezone.utc).isoformat()
+        payloads: list[dict] = []
+
+        # Compute every embedding before writing, so a TEI failure leaves the outbox untouched.
+        for capability in capabilities:
+            # Same document structure as the lexical payload, plus the embedding fields in source.
+            catalog_payload = CatalogOutboxPayloadBuilder.build(
+                server_id=server_id,
+                capabilities=[capability],
+                discovered_at=source_updated_at,
+            )
+            document = catalog_payload["documents"][0]
+            source = document["source"]
+
+            embedding = await self.embedded_service.get_embedding(
+                EmbeddingRequest(inputs=source["search_text"])
+            )
+
+            payloads.append(
+                {
+                    "index": catalog_payload["index"],
+                    **document,
+                    "source": {
+                        **source,
+                        "embedding_model": embedding.model_id,
+                        "embedding": embedding.embedding,
+                    },
+                }
+            )
+
+        return payloads
         
-    async def get_discovery_service(self, server_id: str) -> dict | None:
-        logger.info("Executing get_discovery_service with server_id=%s", server_id)
+    async def post_discovery_mcp_service(
+        self,
+        server_id: str,
+        discovery_type: str = "lexical",
+    ) -> dict | None:
+        logger.info(
+            "Executing post_discovery_mcp_service with server_id=%s, type=%s",
+            server_id,
+            discovery_type,
+        )
         
         with tracer.start_as_current_span("usecase.get_registered_service") as span:
+            span.set_attribute("discovery.type", discovery_type)
             
             try:
                 service = await self.repo.get_by_id(server_id)
@@ -174,17 +225,43 @@ class DiscoveryServicesUseCase:
                     provider_type="MCP",
                 )
                 
-                payload_opensearch = CatalogOutboxPayloadBuilder.build(
-                    server_id=server_id,
-                    capabilities=capabilities,
-                )
-                
-                await self.repo.create_outbox_event(
-                    aggregate_type="mcp_server",
-                    aggregate_id=server_id,
-                    event_type="capabilities_discovered",
-                    payload=payload_opensearch,
-                )
+                match discovery_type:
+                    case "lexical":
+                        discovered_at = datetime.now(timezone.utc).isoformat()
+
+                        # One outbox row (one OpenSearch document) per capability.
+                        for capability in capabilities:
+                            catalog_payload = CatalogOutboxPayloadBuilder.build(
+                                server_id=server_id,
+                                capabilities=[capability],
+                                discovered_at=discovered_at,
+                            )
+                            document = catalog_payload["documents"][0]
+
+                            await self.repo.create_outbox_event(
+                                aggregate_type="mcp_server",
+                                aggregate_id=server_id,
+                                event_type="lexical",
+                                payload={
+                                    "index": catalog_payload["index"],
+                                    **document,
+                                },
+                            )
+                    case "embedding":
+                        embedding_payloads = await self._build_embedding_payloads(
+                            server_id,
+                            capabilities,
+                        )
+
+                        for embedding_payload in embedding_payloads:
+                            await self.repo.create_outbox_event(
+                                aggregate_type="mcp_server",
+                                aggregate_id=server_id,
+                                event_type="embedding",
+                                payload=embedding_payload,
+                            )
+                    case _:
+                        raise ValueError(f"Unsupported discovery type: {discovery_type}")
                 
             except Exception as e:
                 span.record_exception(e)
@@ -214,10 +291,19 @@ class DiscoveryServicesUseCase:
                         
             return discovery
 
-    async def post_discovery_a2a_service(self, agent_id: str) -> DiscoveryA2aResponse | None:
-        logger.info("Executing post_discovery_a2a_service with agent_id=%s", agent_id)
+    async def post_discovery_a2a_service(
+        self,
+        agent_id: str,
+        discovery_type: str = "lexical",
+    ) -> DiscoveryA2aResponse | None:
+        logger.info(
+            "Executing post_discovery_a2a_service with agent_id=%s, type=%s",
+            agent_id,
+            discovery_type,
+        )
         
         with tracer.start_as_current_span("usecase.post_discovery_a2a_service") as span:
+            span.set_attribute("discovery.type", discovery_type)
             try:
                 service = await self.a2a_repo.get_document_by_id(agent_id)
             except Exception as e:
@@ -259,17 +345,43 @@ class DiscoveryServicesUseCase:
                     provider_type="A2A",
                 )
 
-                payload_opensearch = CatalogOutboxPayloadBuilder.build(
-                    server_id=agent_id,
-                    capabilities=capabilities,
-                )
+                match discovery_type:
+                    case "lexical":
+                        discovered_at = datetime.now(timezone.utc).isoformat()
 
-                await self.repo.create_outbox_event(
-                    aggregate_type="a2a_agent",
-                    aggregate_id=agent_id,
-                    event_type="capabilities_discovered",
-                    payload=payload_opensearch,
-                )
+                        # One outbox row (one OpenSearch document) per capability.
+                        for capability in capabilities:
+                            catalog_payload = CatalogOutboxPayloadBuilder.build(
+                                server_id=agent_id,
+                                capabilities=[capability],
+                                discovered_at=discovered_at,
+                            )
+                            document = catalog_payload["documents"][0]
+
+                            await self.repo.create_outbox_event(
+                                aggregate_type="a2a_agent",
+                                aggregate_id=agent_id,
+                                event_type="lexical",
+                                payload={
+                                    "index": catalog_payload["index"],
+                                    **document,
+                                },
+                            )
+                    case "embedding":
+                        embedding_payloads = await self._build_embedding_payloads(
+                            agent_id,
+                            capabilities,
+                        )
+
+                        for embedding_payload in embedding_payloads:
+                            await self.repo.create_outbox_event(
+                                aggregate_type="a2a_agent",
+                                aggregate_id=agent_id,
+                                event_type="embedding",
+                                payload=embedding_payload,
+                            )
+                    case _:
+                        raise ValueError(f"Unsupported discovery type: {discovery_type}")
             except Exception as e:
                 span.record_exception(e)
                 logger.error(f"Error processing a2a discovery response: {e}")

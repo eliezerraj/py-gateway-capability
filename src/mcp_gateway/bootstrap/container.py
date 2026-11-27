@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import asyncpg
 
 from mcp_gateway.domain.repository.a2a_agent_repository import A2AAgentRepository
-from mcp_gateway.domain.repository.mcp_server_repository import ServerRepository
+from mcp_gateway.domain.repository.mcp_server_repository import MCPServerRepository
 from mcp_gateway.infrastructure.database.postgres import (
     close_postgres_pool,
     create_postgres_pool,
@@ -13,14 +13,14 @@ from mcp_gateway.infrastructure.database.postgres import (
 from mcp_gateway.infrastructure.database.repository.postgres_a2a_agent_repository import (
     PostgresA2AAgentRepository,
 )
-from mcp_gateway.infrastructure.database.repository.postgres_repository import (
-    PostgresServerRepository,
+from mcp_gateway.infrastructure.database.repository.postgres_mcp_server_repository import (
+    PostgresMCPServerRepository,
 )
 
 @dataclass
 class Container:
     pool: asyncpg.Pool
-    server_repository: ServerRepository
+    mcp_server_repository: MCPServerRepository
     a2a_agent_repository: A2AAgentRepository
 
 async def create_container(
@@ -36,7 +36,7 @@ async def create_container(
     )
     return Container(
         pool=pool,
-        server_repository=PostgresServerRepository(pool),
+        mcp_server_repository=PostgresMCPServerRepository(pool),
         a2a_agent_repository=PostgresA2AAgentRepository(pool),
     )
 

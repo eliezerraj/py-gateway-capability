@@ -33,7 +33,7 @@ export ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,http://py-mcp-inven
 export MCP_PROTECTED_RESOURCE=http://localhost:7499
 export AUTHORIZATION_SERVER=http://localhost:7100
 
-export EMBEDDED_SERVICE_TEI_ENDPOINT=http://127.0.0.1:6500/v1/embed/tei
+export EMBEDDED_SERVICE_TEI_ENDPOINT=http://127.0.0.1:6500/embed
 
 export LOG_LEVEL=INFO
 export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
